@@ -437,12 +437,20 @@ app.get('/dashboard', async (req, res) => {
         }
     }
 
+    // Cache'i devre dışı bırak
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
     res.send(`
         <!DOCTYPE html>
         <html>
         <head>
             <title>Zoom-Calendly Dashboard</title>
             <meta charset="utf-8">
+            <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+            <meta http-equiv="Pragma" content="no-cache">
+            <meta http-equiv="Expires" content="0">
             <style>
                 body {
                     font-family: Arial, sans-serif;
