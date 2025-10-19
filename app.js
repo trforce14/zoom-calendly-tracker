@@ -780,9 +780,10 @@ app.get('/dashboard', async (req, res) => {
         <body>
             <div class="container">
                 <h1>🚀 Zoom-Calendly Dashboard</h1>
+                <h2 style="text-align: center; margin-top: -10px; color: white;">👤 ${stats.personName || personInfo.name}</h2>
 
                 <div class="card">
-                    <h2>📊 İstatistikler - ${stats.personName || personInfo.name}</h2>
+                    <h2>📊 İstatistikler</h2>
 
                     <!-- Kişi ve Tarih Filtresi -->
                     <div class="date-filter">
