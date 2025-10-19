@@ -162,23 +162,11 @@ class ZoomAutomation {
             const daysDiff = endMoment.diff(startMoment, 'days');
             console.log(`🎥 ${pastMeetings.length} Zoom toplantısı bulundu (${daysDiff} gün)`);
 
-            // Her toplantının detaylarını al (başladı mı kontrolü için)
-            const detailedMeetings = [];
-            for (const meeting of pastMeetings) {
-                try {
-                    const detailResponse = await axios.get(`${this.baseURL}/meetings/${meeting.id}`, {
-                        headers: {
-                            'Authorization': `Bearer ${this.token}`,
-                        }
-                    });
-                    detailedMeetings.push(detailResponse.data);
-                } catch (err) {
-                    // Meeting detayı alınamazsa, temel bilgileri kullan
-                    detailedMeetings.push(meeting);
-                }
-            }
-
-            return detailedMeetings;
+            // Katılımcı sayısını ekle (Report API'den geliyor)
+            return pastMeetings.map(m => ({
+                ...m,
+                participants_count: m.participants_count || 0
+            }));
 
         } catch (error) {
             console.error('❌ Zoom meetings hatası:', error.message);
@@ -282,8 +270,11 @@ class AutomaticAnalyzer {
             total: meetings.length,
             onTime: 0,
             late: 0,
+            noParticipation: 0,
             notStarted: 0,
             details: [],
+            lateDetails: [],
+            noParticipationDetails: [],
             criticalAlerts: [],
             performanceScore: 0
         };
@@ -308,20 +299,43 @@ class AutomaticAnalyzer {
                     moment(meeting.scheduledDateTime),
                     'minutes'
                 );
+                const participantsCount = zoomMatch.participants_count || 0;
 
-                console.log(`  ✅ EŞLEŞME! Zoom: "${zoomMatch.topic}" | Gecikme: ${delay} dk`);
+                console.log(`  ✅ EŞLEŞME! Zoom: "${zoomMatch.topic}" | Gecikme: ${delay} dk | Katılımcı: ${participantsCount}`);
 
                 meeting.actualStartTime = moment(zoomMatch.start_time).format('HH:mm');
                 meeting.delay = delay;
+                meeting.participantsCount = participantsCount;
 
-                if (delay <= 5) {
+                // Katılımcı kontrolü: 1 veya daha az = Sadece satış ekibi, müşteri gelmemiş
+                if (participantsCount <= 1) {
+                    meeting.status = 'no-participation';
+                    analysis.noParticipation++;
+                    analysis.noParticipationDetails.push({
+                        name: meeting.name,
+                        scheduledTime: meeting.scheduledTime,
+                        participants: participantsCount
+                    });
+                    console.log(`     👻 KATILIM YOK (Sadece ${participantsCount} kişi)`);
+
+                    analysis.criticalAlerts.push({
+                        meeting: meeting.name,
+                        message: `👻 ${meeting.name} toplantısına müşteri katılmadı!`
+                    });
+                } else if (delay <= 5) {
                     meeting.status = 'on-time';
                     analysis.onTime++;
-                    console.log(`     ✅ Zamanında`);
+                    console.log(`     ✅ Zamanında (${participantsCount} katılımcı)`);
                 } else {
                     meeting.status = 'late';
                     analysis.late++;
-                    console.log(`     ⚠️ GEÇ (${delay} dakika)`);
+                    analysis.lateDetails.push({
+                        name: meeting.name,
+                        scheduledTime: meeting.scheduledTime,
+                        delay: delay,
+                        participants: participantsCount
+                    });
+                    console.log(`     ⚠️ GEÇ (${delay} dakika, ${participantsCount} katılımcı)`);
 
                     if (delay > 15) {
                         analysis.criticalAlerts.push({
@@ -358,6 +372,7 @@ class AutomaticAnalyzer {
         console.log(`   Toplam: ${analysis.total}`);
         console.log(`   ✅ Zamanında: ${analysis.onTime}`);
         console.log(`   ⚠️ Geç: ${analysis.late}`);
+        console.log(`   👻 Katılım Yok: ${analysis.noParticipation}`);
         console.log(`   ❌ Başlatılmadı: ${analysis.notStarted}`);
         console.log(`   📈 Performans: ${analysis.performanceScore}%`);
         console.log('═'.repeat(80) + '\n');
@@ -368,6 +383,9 @@ class AutomaticAnalyzer {
     updateStatistics(analysis) {
         dailyStats = {
             date: moment().format('YYYY-MM-DD'),
+            noParticipation: analysis.noParticipation,
+            lateDetails: analysis.lateDetails,
+            noParticipationDetails: analysis.noParticipationDetails,
             total: analysis.total,
             onTime: analysis.onTime,
             late: analysis.late,
@@ -414,6 +432,8 @@ app.get('/dashboard', async (req, res) => {
     const startDate = req.query.start;
     const endDate = req.query.end;
 
+    console.log(`\n🌐 Dashboard isteği geldi: start=${startDate}, end=${endDate}`);
+
     // Eğer tarih parametreleri varsa, özel analiz yap
     let stats = dailyStats;
     if (startDate && endDate) {
@@ -429,8 +449,11 @@ app.get('/dashboard', async (req, res) => {
                 total: analysis.total,
                 onTime: analysis.onTime,
                 late: analysis.late,
+                noParticipation: analysis.noParticipation,
                 notStarted: analysis.notStarted,
-                performanceScore: analysis.performanceScore
+                performanceScore: analysis.performanceScore,
+                lateDetails: analysis.lateDetails,
+                noParticipationDetails: analysis.noParticipationDetails
             };
         } catch (error) {
             console.error('Dashboard analiz hatası:', error);
