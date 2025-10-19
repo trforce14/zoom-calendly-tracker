@@ -25,7 +25,7 @@ class CalendlyAutomation {
         this.baseURL = 'https://api.calendly.com';
     }
 
-    async getTodaysMeetings() {
+    async getTodaysMeetings(startDate = null, endDate = null) {
         try {
             // Önce user bilgisini al
             const userResponse = await axios.get(`${this.baseURL}/users/me`, {
@@ -37,9 +37,13 @@ class CalendlyAutomation {
 
             const userUri = userResponse.data.resource.uri;
 
-            // Son 30 günü al (Zoom Report API limiti nedeniyle)
-            const thirtyDaysAgo = moment().subtract(30, 'days').startOf('day').toISOString();
-            const today = moment().endOf('day').toISOString();
+            // Tarih aralığını belirle
+            const startTime = startDate
+                ? moment(startDate).startOf('day').toISOString()
+                : moment().subtract(30, 'days').startOf('day').toISOString();
+            const endTime = endDate
+                ? moment(endDate).endOf('day').toISOString()
+                : moment().endOf('day').toISOString();
 
             const response = await axios.get(`${this.baseURL}/scheduled_events`, {
                 headers: {
@@ -48,8 +52,8 @@ class CalendlyAutomation {
                 },
                 params: {
                     user: userUri,
-                    min_start_time: thirtyDaysAgo,
-                    max_start_time: today,
+                    min_start_time: startTime,
+                    max_start_time: endTime,
                     status: 'active'
                 }
             });
@@ -63,7 +67,8 @@ class CalendlyAutomation {
                 status: 'scheduled'
             }));
 
-            console.log(`📅 ${meetings.length} Calendly randevusu bulundu (son 30 gün)`);
+            const daysDiff = moment(endTime).diff(moment(startTime), 'days');
+            console.log(`📅 ${meetings.length} Calendly randevusu bulundu (${daysDiff} gün)`);
             return meetings;
 
         } catch (error) {
@@ -111,7 +116,7 @@ class ZoomAutomation {
         }
     }
 
-    async checkPastMeetings() {
+    async checkPastMeetings(startDate = null, endDate = null) {
         try {
             if (!this.token) {
                 const tokenResult = await this.getAccessToken();
@@ -125,11 +130,15 @@ class ZoomAutomation {
             const userEmail = process.env.ZOOM_USER_EMAIL || 'tunahan@milyonercommerce.com';
             console.log(`👤 Zoom User: ${userEmail}`);
 
-            // Son 30 günün tarih aralığını hazırla (Zoom Report API limiti)
-            const thirtyDaysAgo = moment().subtract(30, 'days').startOf('day');
-            const now = moment();
+            // Tarih aralığını belirle (max 30 gün - Zoom Report API limiti)
+            const startMoment = startDate
+                ? moment(startDate).startOf('day')
+                : moment().subtract(30, 'days').startOf('day');
+            const endMoment = endDate
+                ? moment(endDate).endOf('day')
+                : moment();
 
-            console.log(`📅 Tarih aralığı: ${thirtyDaysAgo.format('YYYY-MM-DD')} - ${now.format('YYYY-MM-DD')}`);
+            console.log(`📅 Tarih aralığı: ${startMoment.format('YYYY-MM-DD')} - ${endMoment.format('YYYY-MM-DD')}`);
 
             // Report API kullanarak geçmiş toplantıları çek
             const response = await axios.get(`${this.baseURL}/report/users/${userEmail}/meetings`, {
@@ -138,13 +147,14 @@ class ZoomAutomation {
                 },
                 params: {
                     page_size: 300,
-                    from: thirtyDaysAgo.format('YYYY-MM-DD'),
-                    to: now.format('YYYY-MM-DD')
+                    from: startMoment.format('YYYY-MM-DD'),
+                    to: endMoment.format('YYYY-MM-DD')
                 }
             });
 
             const pastMeetings = response.data.meetings || [];
-            console.log(`🎥 ${pastMeetings.length} Zoom toplantısı bulundu (son 30 gün)`);
+            const daysDiff = endMoment.diff(startMoment, 'days');
+            console.log(`🎥 ${pastMeetings.length} Zoom toplantısı bulundu (${daysDiff} gün)`);
 
             // Her toplantının detaylarını al (başladı mı kontrolü için)
             const detailedMeetings = [];
@@ -390,14 +400,46 @@ app.get('/setup', (req, res) => {
     res.sendFile(__dirname + '/setup.html');
 });
 
-app.get('/dashboard', (req, res) => {
+app.get('/dashboard', async (req, res) => {
+    // Tarih parametrelerini al
+    const startDate = req.query.start;
+    const endDate = req.query.end;
+
+    // Eğer tarih parametreleri varsa, özel analiz yap
+    let stats = dailyStats;
+    if (startDate && endDate) {
+        try {
+            const analyzer = new AutomaticAnalyzer();
+            const calendlyMeetings = await analyzer.calendly.getTodaysMeetings(startDate, endDate);
+
+            // Database'e ekle
+            calendlyMeetings.forEach(meeting => {
+                if (!meetingsDatabase.find(m => m.id === meeting.id)) {
+                    meetingsDatabase.push(meeting);
+                }
+            });
+
+            const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate);
+            const analysis = analyzer.analyzeAllMeetings(zoomMeetings);
+
+            stats = {
+                total: analysis.total,
+                onTime: analysis.onTime,
+                late: analysis.late,
+                notStarted: analysis.notStarted,
+                performanceScore: analysis.performanceScore
+            };
+        } catch (error) {
+            console.error('Dashboard analiz hatası:', error);
+        }
+    }
+
     res.send(`
         <!DOCTYPE html>
         <html>
         <head>
             <title>Zoom-Calendly Dashboard</title>
             <meta charset="utf-8">
-            <meta http-equiv="refresh" content="30">
             <style>
                 body {
                     font-family: Arial, sans-serif;
@@ -432,47 +474,146 @@ app.get('/dashboard', (req, res) => {
                     font-size: 36px;
                     font-weight: bold;
                 }
+                .date-filter {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 10px;
+                    margin-bottom: 20px;
+                    display: flex;
+                    gap: 15px;
+                    align-items: end;
+                    flex-wrap: wrap;
+                }
+                .date-input {
+                    flex: 1;
+                    min-width: 200px;
+                }
+                .date-input label {
+                    display: block;
+                    margin-bottom: 5px;
+                    font-weight: 600;
+                    color: #666;
+                }
+                .date-input input {
+                    width: 100%;
+                    padding: 10px;
+                    border: 2px solid #e9ecef;
+                    border-radius: 8px;
+                    font-size: 14px;
+                }
+                .filter-btn {
+                    padding: 10px 30px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: transform 0.2s;
+                }
+                .filter-btn:hover {
+                    transform: translateY(-2px);
+                }
+                .quick-filters {
+                    display: flex;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+                .quick-btn {
+                    padding: 8px 16px;
+                    background: white;
+                    border: 2px solid #667eea;
+                    color: #667eea;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    cursor: pointer;
+                    transition: all 0.2s;
+                }
+                .quick-btn:hover {
+                    background: #667eea;
+                    color: white;
+                }
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>🚀 Zoom-Calendly Dashboard</h1>
-                
+
                 <div class="card">
-                    <h2>📊 Son 1 Yıl İstatistikleri</h2>
+                    <h2>📊 İstatistikler</h2>
+
+                    <!-- Tarih Filtresi -->
+                    <div class="date-filter">
+                        <div class="date-input">
+                            <label>Başlangıç Tarihi</label>
+                            <input type="date" id="startDate" value="${req.query.start || moment().subtract(30, 'days').format('YYYY-MM-DD')}">
+                        </div>
+                        <div class="date-input">
+                            <label>Bitiş Tarihi</label>
+                            <input type="date" id="endDate" value="${req.query.end || moment().format('YYYY-MM-DD')}">
+                        </div>
+                        <button class="filter-btn" onclick="applyFilter()">Filtrele</button>
+                    </div>
+
+                    <!-- Hızlı Filtreler -->
+                    <div class="quick-filters" style="margin-bottom: 20px;">
+                        <button class="quick-btn" onclick="setQuickFilter(7)">Son 7 Gün</button>
+                        <button class="quick-btn" onclick="setQuickFilter(30)">Son 30 Gün</button>
+                        <button class="quick-btn" onclick="setQuickFilter(90)">Son 90 Gün</button>
+                    </div>
+
                     <p style="text-align: center; color: #666; margin-bottom: 20px;">
-                        ${moment().subtract(1, 'year').format('DD MMM YYYY')} - ${moment().format('DD MMM YYYY')}
+                        ${req.query.start ? moment(req.query.start).format('DD MMM YYYY') : moment().subtract(30, 'days').format('DD MMM YYYY')} - ${req.query.end ? moment(req.query.end).format('DD MMM YYYY') : moment().format('DD MMM YYYY')}
                     </p>
                     <div class="stats">
                         <div class="stat-card">
-                            <div class="stat-number">${dailyStats.total}</div>
+                            <div class="stat-number">${stats.total}</div>
                             <div>Toplam Toplantı</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-number" style="color: #4CAF50;">${dailyStats.onTime}</div>
+                            <div class="stat-number" style="color: #4CAF50;">${stats.onTime}</div>
                             <div>Zamanında</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-number" style="color: #FF9800;">${dailyStats.late}</div>
+                            <div class="stat-number" style="color: #FF9800;">${stats.late}</div>
                             <div>Geç Başlayan</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-number" style="color: #f44336;">${dailyStats.notStarted}</div>
+                            <div class="stat-number" style="color: #f44336;">${stats.notStarted}</div>
                             <div>Başlatılmayan</div>
                         </div>
                     </div>
 
-                    <div style="text-align: center; font-size: 48px; margin: 20px; color: ${dailyStats.performanceScore >= 80 ? '#4CAF50' : dailyStats.performanceScore >= 60 ? '#FF9800' : '#f44336'};">
-                        Performans: ${dailyStats.performanceScore || 0}%
+                    <div style="text-align: center; font-size: 48px; margin: 20px; color: ${stats.performanceScore >= 80 ? '#4CAF50' : stats.performanceScore >= 60 ? '#FF9800' : '#f44336'};">
+                        Performans: ${stats.performanceScore || 0}%
                     </div>
 
                     <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-top: 20px;">
                         <p style="margin: 0; text-align: center; color: #666;">
-                            💡 Sistem her 30 dakikada bir otomatik güncellenir
+                            💡 Tarih aralığını seçip "Filtrele" butonuna basın
                         </p>
                     </div>
                 </div>
             </div>
+
+            <script>
+                function applyFilter() {
+                    const start = document.getElementById('startDate').value;
+                    const end = document.getElementById('endDate').value;
+                    window.location.href = '/dashboard?start=' + start + '&end=' + end;
+                }
+
+                function setQuickFilter(days) {
+                    const end = new Date();
+                    const start = new Date();
+                    start.setDate(start.getDate() - days);
+
+                    document.getElementById('startDate').value = start.toISOString().split('T')[0];
+                    document.getElementById('endDate').value = end.toISOString().split('T')[0];
+                    applyFilter();
+                }
+            </script>
         </body>
         </html>
     `);
