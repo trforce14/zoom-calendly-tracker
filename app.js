@@ -273,10 +273,13 @@ class AutomaticAnalyzer {
         return analysis;
     }
 
-    analyzeAllMeetings(zoomMeetings) {
+    analyzeAllMeetings(zoomMeetings, meetingsToAnalyze = null) {
+        // Eğer özel bir toplantı listesi verilmişse onu kullan, yoksa global database'i kullan
+        const meetings = meetingsToAnalyze || meetingsDatabase;
+
         const analysis = {
             timestamp: moment().format('DD.MM.YYYY HH:mm'),
-            total: meetingsDatabase.length,
+            total: meetings.length,
             onTime: 0,
             late: 0,
             notStarted: 0,
@@ -286,12 +289,12 @@ class AutomaticAnalyzer {
         };
 
         console.log('\n🔍 EŞLEŞME ANALİZİ BAŞLIYOR...');
-        console.log(`📊 Toplam Calendly randevu: ${meetingsDatabase.length}`);
+        console.log(`📊 Toplam Calendly randevu: ${meetings.length}`);
         console.log(`📊 Toplam Zoom toplantı: ${zoomMeetings.length}`);
         console.log('─'.repeat(80));
 
-        meetingsDatabase.forEach((meeting, index) => {
-            console.log(`\n[${index + 1}/${meetingsDatabase.length}] ${meeting.name} - ${moment(meeting.scheduledDateTime).format('YYYY-MM-DD HH:mm')}`);
+        meetings.forEach((meeting, index) => {
+            console.log(`\n[${index + 1}/${meetings.length}] ${meeting.name} - ${moment(meeting.scheduledDateTime).format('YYYY-MM-DD HH:mm')}`);
 
             const zoomMatch = zoomMeetings.find(z => {
                 const timeDiff = Math.abs(
@@ -417,16 +420,10 @@ app.get('/dashboard', async (req, res) => {
         try {
             const analyzer = new AutomaticAnalyzer();
             const calendlyMeetings = await analyzer.calendly.getTodaysMeetings(startDate, endDate);
-
-            // Database'e ekle
-            calendlyMeetings.forEach(meeting => {
-                if (!meetingsDatabase.find(m => m.id === meeting.id)) {
-                    meetingsDatabase.push(meeting);
-                }
-            });
-
             const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate);
-            const analysis = analyzer.analyzeAllMeetings(zoomMeetings);
+
+            // Sadece bu tarih aralığındaki toplantıları analiz et (global database'e ekleme yapma)
+            const analysis = analyzer.analyzeAllMeetings(zoomMeetings, calendlyMeetings);
 
             stats = {
                 total: analysis.total,
