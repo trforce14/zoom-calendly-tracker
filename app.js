@@ -334,6 +334,7 @@ class SlackNotifier {
         let message = `
 📊 *Günlük Zoom-Calendly Raporu*
 ${moment().format('DD MMMM YYYY, dddd')}
+${analysis.personName ? `👤 *${analysis.personName}*` : ''}
 ━━━━━━━━━━━━━━━━━━━━
 📅 Toplam Randevu: ${analysis.total}
 ✅ Zamanında: ${analysis.onTime}
@@ -348,7 +349,7 @@ ${moment().format('DD MMMM YYYY, dddd')}
         if (analysis.lateDetails && analysis.lateDetails.length > 0) {
             message += `\n⚠️ *GEÇ KALAN TOPLANTI DETAYLARI:*\n`;
             analysis.lateDetails.forEach((detail, index) => {
-                message += `${index + 1}. ⚠️ *GEÇ KALDI* - ${detail.name}\n`;
+                message += `${index + 1}. ⚠️ *GEÇ KALDI* - ${analysis.personName || 'Bilinmeyen'} - ${detail.name}\n`;
                 message += `   🕐 Planlandı: ${detail.scheduledTime}\n`;
                 message += `   ⏱️ Gecikme: ${detail.delay} dakika\n`;
                 message += `   👥 Katılımcılar: ${detail.participants.join(', ')}\n\n`;
@@ -359,7 +360,7 @@ ${moment().format('DD MMMM YYYY, dddd')}
         if (analysis.noParticipationDetails && analysis.noParticipationDetails.length > 0) {
             message += `\n👻 *KATILIM YOK - DETAYLAR:*\n`;
             analysis.noParticipationDetails.forEach((detail, index) => {
-                message += `${index + 1}. 👻 *KATILMADI* - ${detail.name}\n`;
+                message += `${index + 1}. 👻 *KATILMADI* - ${analysis.personName || 'Bilinmeyen'} - ${detail.name}\n`;
                 message += `   🕐 Planlandı: ${detail.scheduledTime}\n`;
                 message += `   👥 Sadece: ${detail.participants.join(', ')}\n\n`;
             });
@@ -369,7 +370,7 @@ ${moment().format('DD MMMM YYYY, dddd')}
         if (analysis.notStartedDetails && analysis.notStartedDetails.length > 0) {
             message += `\n❌ *BAŞLATILMAYAN TOPLANTI DETAYLARI:*\n`;
             analysis.notStartedDetails.forEach((detail, index) => {
-                message += `${index + 1}. ❌ *BAŞLATILMADI* - ${detail.name}\n`;
+                message += `${index + 1}. ❌ *BAŞLATILMADI* - ${analysis.personName || 'Bilinmeyen'} - ${detail.name}\n`;
                 message += `   🕐 Planlandı: ${detail.scheduledTime}\n\n`;
             });
         }
@@ -382,16 +383,18 @@ ${moment().format('DD MMMM YYYY, dddd')}
 
         let alertMessage = '🚨 *ACİL DURUM BİLDİRİMİ*\n\n';
         alerts.forEach((alert, index) => {
+            const person = alert.personName || 'Bilinmeyen';
+
             // Mesajdan durumu çıkar ve başa ekle
             if (alert.message.includes('geç başladı')) {
-                alertMessage += `${index + 1}. ⚠️ *GEÇ KALDI* - ${alert.meeting}\n`;
+                alertMessage += `${index + 1}. ⚠️ *GEÇ KALDI* - ${person} - ${alert.meeting}\n`;
                 if (alert.delay) {
                     alertMessage += `   ⏱️ Gecikme: ${alert.delay} dakika\n`;
                 }
             } else if (alert.message.includes('katılmadı')) {
-                alertMessage += `${index + 1}. 👻 *KATILMADI* - ${alert.meeting}\n`;
+                alertMessage += `${index + 1}. 👻 *KATILMADI* - ${person} - ${alert.meeting}\n`;
             } else if (alert.message.includes('başlatılmadı')) {
-                alertMessage += `${index + 1}. ❌ *BAŞLATILMADI* - ${alert.meeting}\n`;
+                alertMessage += `${index + 1}. ❌ *BAŞLATILMADI* - ${person} - ${alert.meeting}\n`;
             } else {
                 alertMessage += `${index + 1}. ${alert.message}\n`;
             }
@@ -436,8 +439,13 @@ class AutomaticAnalyzer {
         // Eğer özel bir toplantı listesi verilmişse onu kullan, yoksa global database'i kullan
         const meetings = meetingsToAnalyze || meetingsDatabase;
 
+        // Kişi bilgisini al
+        const personInfo = this.personKey ? TEAM_MEMBERS[this.personKey] : null;
+        const personName = personInfo ? personInfo.name : 'Bilinmeyen';
+
         const analysis = {
             timestamp: moment().format('DD.MM.YYYY HH:mm'),
+            personName: personName,
             total: meetings.length,
             onTime: 0,
             late: 0,
@@ -497,6 +505,7 @@ class AutomaticAnalyzer {
 
                     analysis.criticalAlerts.push({
                         meeting: meeting.name,
+                        personName: personName,
                         message: `👻 ${meeting.name} toplantısına müşteri katılmadı!`
                     });
                 } else if (delay <= 5) {
@@ -521,6 +530,7 @@ class AutomaticAnalyzer {
                     if (delay > 15) {
                         analysis.criticalAlerts.push({
                             meeting: meeting.name,
+                            personName: personName,
                             delay: delay,
                             message: `⚠️ ${meeting.name} toplantısı ${delay} dakika geç başladı!`
                         });
@@ -539,6 +549,7 @@ class AutomaticAnalyzer {
 
                     analysis.criticalAlerts.push({
                         meeting: meeting.name,
+                        personName: personName,
                         message: `❌ ${meeting.name} toplantısı başlatılmadı!`
                     });
                 } else {
