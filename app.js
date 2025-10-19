@@ -123,23 +123,31 @@ class CalendlyAutomation {
                 ? moment(endDate).endOf('day').toISOString()
                 : moment().endOf('day').toISOString();
 
-            const response = await axios.get(`${this.baseURL}/scheduled_events`, {
-                headers: {
-                    'Authorization': `Bearer ${this.apiKey}`,
-                    'Content-Type': 'application/json'
-                },
-                params: {
-                    user: userUri,
-                    min_start_time: startTime,
-                    max_start_time: endTime,
-                    status: 'active',
-                    count: 100
+            // Pagination ile tüm randevuları çek
+            let allEvents = [];
+            let nextPageUrl = `${this.baseURL}/scheduled_events?user=${encodeURIComponent(userUri)}&min_start_time=${encodeURIComponent(startTime)}&max_start_time=${encodeURIComponent(endTime)}&status=active&count=100`;
+
+            while (nextPageUrl) {
+                const response = await axios.get(nextPageUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                allEvents = allEvents.concat(response.data.collection || []);
+                nextPageUrl = response.data.pagination?.next_page || null;
+
+                // Sonsuz döngü önlemi
+                if (allEvents.length > 1000) {
+                    console.log('⚠️  1000+ randevu, durduruluyor');
+                    break;
                 }
-            });
+            }
 
             // İptal edilenleri filtrele
-            const totalEvents = response.data.collection.length;
-            const meetings = response.data.collection
+            const totalEvents = allEvents.length;
+            const meetings = allEvents
                 .filter(event => event.status !== 'canceled') // İptal edilenleri çıkar
                 .map(event => ({
                     id: event.uri.split('/').pop(),
