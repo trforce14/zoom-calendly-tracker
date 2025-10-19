@@ -331,25 +331,71 @@ class SlackNotifier {
     }
 
     async sendDailyReport(analysis) {
-        const message = `
+        let message = `
 📊 *Günlük Zoom-Calendly Raporu*
 ${moment().format('DD MMMM YYYY, dddd')}
 ━━━━━━━━━━━━━━━━━━━━
 📅 Toplam Randevu: ${analysis.total}
 ✅ Zamanında: ${analysis.onTime}
 ⚠️ Geç Başlayan: ${analysis.late}
+👻 Katılım Yok: ${analysis.noParticipation}
 ❌ Başlatılmayan: ${analysis.notStarted}
 ━━━━━━━━━━━━━━━━━━━━
 📈 *Performans: ${analysis.performanceScore}%*
-        `;
-        
+`;
+
+        // GEÇ KALAN TOPLANTI DETAYLARI
+        if (analysis.lateDetails && analysis.lateDetails.length > 0) {
+            message += `\n⚠️ *GEÇ KALAN TOPLANTI DETAYLARI:*\n`;
+            analysis.lateDetails.forEach((detail, index) => {
+                message += `${index + 1}. ⚠️ *GEÇ KALDI* - ${detail.name}\n`;
+                message += `   🕐 Planlandı: ${detail.scheduledTime}\n`;
+                message += `   ⏱️ Gecikme: ${detail.delay} dakika\n`;
+                message += `   👥 Katılımcılar: ${detail.participants.join(', ')}\n\n`;
+            });
+        }
+
+        // KATILMAYANLAR
+        if (analysis.noParticipationDetails && analysis.noParticipationDetails.length > 0) {
+            message += `\n👻 *KATILIM YOK - DETAYLAR:*\n`;
+            analysis.noParticipationDetails.forEach((detail, index) => {
+                message += `${index + 1}. 👻 *KATILMADI* - ${detail.name}\n`;
+                message += `   🕐 Planlandı: ${detail.scheduledTime}\n`;
+                message += `   👥 Sadece: ${detail.participants.join(', ')}\n\n`;
+            });
+        }
+
+        // BAŞLATILMAYANLAR
+        if (analysis.notStartedDetails && analysis.notStartedDetails.length > 0) {
+            message += `\n❌ *BAŞLATILMAYAN TOPLANTI DETAYLARI:*\n`;
+            analysis.notStartedDetails.forEach((detail, index) => {
+                message += `${index + 1}. ❌ *BAŞLATILMADI* - ${detail.name}\n`;
+                message += `   🕐 Planlandı: ${detail.scheduledTime}\n\n`;
+            });
+        }
+
         await this.sendMessage(message);
     }
 
     async sendCriticalAlert(alerts) {
+        if (!alerts || alerts.length === 0) return;
+
         let alertMessage = '🚨 *ACİL DURUM BİLDİRİMİ*\n\n';
-        alerts.forEach(alert => {
-            alertMessage += `❗ ${alert.message}\n`;
+        alerts.forEach((alert, index) => {
+            // Mesajdan durumu çıkar ve başa ekle
+            if (alert.message.includes('geç başladı')) {
+                alertMessage += `${index + 1}. ⚠️ *GEÇ KALDI* - ${alert.meeting}\n`;
+                if (alert.delay) {
+                    alertMessage += `   ⏱️ Gecikme: ${alert.delay} dakika\n`;
+                }
+            } else if (alert.message.includes('katılmadı')) {
+                alertMessage += `${index + 1}. 👻 *KATILMADI* - ${alert.meeting}\n`;
+            } else if (alert.message.includes('başlatılmadı')) {
+                alertMessage += `${index + 1}. ❌ *BAŞLATILMADI* - ${alert.meeting}\n`;
+            } else {
+                alertMessage += `${index + 1}. ${alert.message}\n`;
+            }
+            alertMessage += '\n';
         });
         await this.sendMessage(alertMessage, this.alertChannel);
     }
@@ -400,6 +446,7 @@ class AutomaticAnalyzer {
             details: [],
             lateDetails: [],
             noParticipationDetails: [],
+            notStartedDetails: [],
             criticalAlerts: [],
             performanceScore: 0
         };
@@ -484,6 +531,11 @@ class AutomaticAnalyzer {
                     meeting.status = 'not-started';
                     analysis.notStarted++;
                     console.log(`  ❌ Başlatılmadı`);
+
+                    analysis.notStartedDetails.push({
+                        name: meeting.name,
+                        scheduledTime: meeting.scheduledTime
+                    });
 
                     analysis.criticalAlerts.push({
                         meeting: meeting.name,
