@@ -37,8 +37,9 @@ class CalendlyAutomation {
 
             const userUri = userResponse.data.resource.uri;
 
-            const today = moment().startOf('day').toISOString();
-            const tomorrow = moment().endOf('day').toISOString();
+            // Son 7 günü al
+            const weekAgo = moment().subtract(7, 'days').startOf('day').toISOString();
+            const today = moment().endOf('day').toISOString();
 
             const response = await axios.get(`${this.baseURL}/scheduled_events`, {
                 headers: {
@@ -47,8 +48,8 @@ class CalendlyAutomation {
                 },
                 params: {
                     user: userUri,
-                    min_start_time: today,
-                    max_start_time: tomorrow,
+                    min_start_time: weekAgo,
+                    max_start_time: today,
                     status: 'active'
                 }
             });
@@ -56,12 +57,12 @@ class CalendlyAutomation {
             const meetings = response.data.collection.map(event => ({
                 id: event.uri.split('/').pop(),
                 name: event.name,
-                scheduledTime: moment(event.start_time).format('HH:mm'),
+                scheduledTime: moment(event.start_time).format('DD/MM HH:mm'),
                 scheduledDateTime: event.start_time,
                 status: 'scheduled'
             }));
 
-            console.log(`📅 ${meetings.length} Calendly randevusu bulundu`);
+            console.log(`📅 ${meetings.length} Calendly randevusu bulundu (son 7 gün)`);
             return meetings;
 
         } catch (error) {
@@ -134,18 +135,18 @@ class ZoomAutomation {
                 }
             });
 
-            // Bugünün geçmiş saatlerindeki toplantıları filtrele
+            // Son 7 günün toplantılarını filtrele
+            const weekAgo = moment().subtract(7, 'days').startOf('day');
             const now = moment();
-            const today = moment().format('YYYY-MM-DD');
 
             const pastMeetings = (response.data.meetings || []).filter(meeting => {
                 const meetingDate = moment(meeting.start_time);
-                const isSameDay = meetingDate.format('YYYY-MM-DD') === today;
+                const isInLastWeek = meetingDate.isAfter(weekAgo);
                 const isPast = meetingDate.isBefore(now);
-                return isSameDay && isPast;
+                return isInLastWeek && isPast;
             });
 
-            console.log(`🎥 ${pastMeetings.length} Zoom toplantısı bulundu (bugün, geçmiş)`);
+            console.log(`🎥 ${pastMeetings.length} Zoom toplantısı bulundu (son 7 gün)`);
 
             // Her toplantının detaylarını al (başladı mı kontrolü için)
             const detailedMeetings = [];
@@ -417,11 +418,14 @@ app.get('/dashboard', (req, res) => {
                 <h1>🚀 Zoom-Calendly Dashboard</h1>
                 
                 <div class="card">
-                    <h2>Günlük İstatistikler - ${moment().format('DD MMMM YYYY')}</h2>
+                    <h2>📊 Son 7 Gün İstatistikleri</h2>
+                    <p style="text-align: center; color: #666; margin-bottom: 20px;">
+                        ${moment().subtract(7, 'days').format('DD MMM')} - ${moment().format('DD MMM YYYY')}
+                    </p>
                     <div class="stats">
                         <div class="stat-card">
                             <div class="stat-number">${dailyStats.total}</div>
-                            <div>Toplam</div>
+                            <div>Toplam Toplantı</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-number" style="color: #4CAF50;">${dailyStats.onTime}</div>
@@ -429,16 +433,22 @@ app.get('/dashboard', (req, res) => {
                         </div>
                         <div class="stat-card">
                             <div class="stat-number" style="color: #FF9800;">${dailyStats.late}</div>
-                            <div>Geç</div>
+                            <div>Geç Başlayan</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-number" style="color: #f44336;">${dailyStats.notStarted}</div>
                             <div>Başlatılmayan</div>
                         </div>
                     </div>
-                    
-                    <div style="text-align: center; font-size: 48px; margin: 20px;">
+
+                    <div style="text-align: center; font-size: 48px; margin: 20px; color: ${dailyStats.performanceScore >= 80 ? '#4CAF50' : dailyStats.performanceScore >= 60 ? '#FF9800' : '#f44336'};">
                         Performans: ${dailyStats.performanceScore || 0}%
+                    </div>
+
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-top: 20px;">
+                        <p style="margin: 0; text-align: center; color: #666;">
+                            💡 Sistem her 30 dakikada bir otomatik güncellenir
+                        </p>
                     </div>
                 </div>
             </div>
