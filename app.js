@@ -165,7 +165,8 @@ class ZoomAutomation {
             // Katılımcı sayısını ekle (Report API'den geliyor)
             return pastMeetings.map(m => ({
                 ...m,
-                participants_count: m.participants_count || 0
+                participants_count: m.participants_count || 0,
+                uuid: m.uuid // UUID'yi sakla (katılımcı detayları için gerekli)
             }));
 
         } catch (error) {
@@ -175,6 +176,28 @@ class ZoomAutomation {
                 console.error('   URL:', error.config?.url);
                 console.error('   Hata Detayı:', JSON.stringify(error.response.data, null, 2));
             }
+            return [];
+        }
+    }
+
+    async getParticipants(meetingUUID) {
+        try {
+            // UUID'yi encode et (Zoom API gereksinimi)
+            const encodedUUID = encodeURIComponent(encodeURIComponent(meetingUUID));
+
+            const response = await axios.get(`${this.baseURL}/report/meetings/${encodedUUID}/participants`, {
+                headers: {
+                    'Authorization': `Bearer ${this.token}`,
+                },
+                params: {
+                    page_size: 30
+                }
+            });
+
+            const participants = response.data.participants || [];
+            return participants.map(p => p.name || 'İsimsiz');
+        } catch (error) {
+            console.error('❌ Katılımcı bilgisi alınamadı:', error.message);
             return [];
         }
     }
@@ -251,8 +274,8 @@ class AutomaticAnalyzer {
         });
 
         const pastMeetings = await this.zoom.checkPastMeetings();
-        const analysis = this.analyzeAllMeetings(pastMeetings);
-        
+        const analysis = await this.analyzeAllMeetings(pastMeetings);
+
         this.updateStatistics(analysis);
         await this.checkCriticalSituations(analysis);
         
@@ -261,7 +284,7 @@ class AutomaticAnalyzer {
         return analysis;
     }
 
-    analyzeAllMeetings(zoomMeetings, meetingsToAnalyze = null) {
+    async analyzeAllMeetings(zoomMeetings, meetingsToAnalyze = null) {
         // Eğer özel bir toplantı listesi verilmişse onu kullan, yoksa global database'i kullan
         const meetings = meetingsToAnalyze || meetingsDatabase;
 
@@ -284,7 +307,8 @@ class AutomaticAnalyzer {
         console.log(`📊 Toplam Zoom toplantı: ${zoomMeetings.length}`);
         console.log('─'.repeat(80));
 
-        meetings.forEach((meeting, index) => {
+        for (let index = 0; index < meetings.length; index++) {
+            const meeting = meetings[index];
             console.log(`\n[${index + 1}/${meetings.length}] ${meeting.name} - ${moment(meeting.scheduledDateTime).format('YYYY-MM-DD HH:mm')}`);
 
             const zoomMatch = zoomMeetings.find(z => {
@@ -311,12 +335,16 @@ class AutomaticAnalyzer {
                 if (participantsCount <= 1) {
                     meeting.status = 'no-participation';
                     analysis.noParticipation++;
+
+                    // Katılımcı isimlerini al
+                    const participantNames = await this.zoom.getParticipants(zoomMatch.uuid);
+
                     analysis.noParticipationDetails.push({
                         name: meeting.name,
                         scheduledTime: meeting.scheduledTime,
-                        participants: participantsCount
+                        participants: participantNames.length > 0 ? participantNames : [`${participantsCount} kişi`]
                     });
-                    console.log(`     👻 KATILIM YOK (Sadece ${participantsCount} kişi)`);
+                    console.log(`     👻 KATILIM YOK (Sadece ${participantsCount} kişi: ${participantNames.join(', ')})`);
 
                     analysis.criticalAlerts.push({
                         meeting: meeting.name,
@@ -329,13 +357,17 @@ class AutomaticAnalyzer {
                 } else {
                     meeting.status = 'late';
                     analysis.late++;
+
+                    // Katılımcı isimlerini al
+                    const participantNames = await this.zoom.getParticipants(zoomMatch.uuid);
+
                     analysis.lateDetails.push({
                         name: meeting.name,
                         scheduledTime: meeting.scheduledTime,
                         delay: delay,
-                        participants: participantsCount
+                        participants: participantNames.length > 0 ? participantNames : [`${participantsCount} katılımcı`]
                     });
-                    console.log(`     ⚠️ GEÇ (${delay} dakika, ${participantsCount} katılımcı)`);
+                    console.log(`     ⚠️ GEÇ (${delay} dakika, ${participantsCount} katılımcı: ${participantNames.join(', ')})`);
 
                     if (delay > 15) {
                         analysis.criticalAlerts.push({
@@ -359,9 +391,9 @@ class AutomaticAnalyzer {
                     console.log(`  ⏳ Henüz başlamamış`);
                 }
             }
-            
+
             analysis.details.push(meeting);
-        });
+        }
 
         analysis.performanceScore = analysis.total > 0
             ? Math.round((analysis.onTime / analysis.total) * 100)
@@ -443,7 +475,7 @@ app.get('/dashboard', async (req, res) => {
             const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate);
 
             // Sadece bu tarih aralığındaki toplantıları analiz et (global database'e ekleme yapma)
-            const analysis = analyzer.analyzeAllMeetings(zoomMeetings, calendlyMeetings);
+            const analysis = await analyzer.analyzeAllMeetings(zoomMeetings, calendlyMeetings);
 
             stats = {
                 total: analysis.total,
@@ -635,7 +667,7 @@ app.get('/dashboard', async (req, res) => {
                                 <li style="margin: 5px 0;">
                                     <strong>${meeting.name}</strong> - ${meeting.scheduledTime}
                                     <span style="color: #FF9800; font-weight: bold;"> → ${meeting.delay} dakika geç</span>
-                                    <span style="color: #666;"> (${meeting.participants} katılımcı)</span>
+                                    <span style="color: #666;"> (${Array.isArray(meeting.participants) ? meeting.participants.join(', ') : meeting.participants})</span>
                                 </li>
                             `).join('')}
                         </ul>
@@ -650,7 +682,7 @@ app.get('/dashboard', async (req, res) => {
                             ${stats.noParticipationDetails.map(meeting => `
                                 <li style="margin: 5px 0;">
                                     <strong>${meeting.name}</strong> - ${meeting.scheduledTime}
-                                    <span style="color: #9C27B0;"> → Sadece ${meeting.participants} kişi</span>
+                                    <span style="color: #9C27B0;"> → ${Array.isArray(meeting.participants) ? meeting.participants.join(', ') : meeting.participants}</span>
                                 </li>
                             `).join('')}
                         </ul>
