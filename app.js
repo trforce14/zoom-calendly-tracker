@@ -361,7 +361,11 @@ class AutomaticAnalyzer {
 }
 
 app.get('/', (req, res) => {
-    res.redirect('/dashboard');
+    res.redirect('/setup');
+});
+
+app.get('/setup', (req, res) => {
+    res.sendFile(__dirname + '/setup.html');
 });
 
 app.get('/dashboard', (req, res) => {
@@ -445,6 +449,176 @@ app.get('/dashboard', (req, res) => {
 
 app.get('/api/stats', (req, res) => {
     res.json(dailyStats);
+});
+
+// OAuth placeholder routes (şimdilik basit)
+app.get('/auth/calendly', (req, res) => {
+    // TODO: Gerçek OAuth akışı
+    res.send(`
+        <html>
+        <head>
+            <title>Calendly Bağlantısı</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    margin: 0;
+                }
+                .container {
+                    background: white;
+                    padding: 40px;
+                    border-radius: 15px;
+                    max-width: 500px;
+                    width: 100%;
+                }
+                h2 { color: #333; margin-bottom: 20px; }
+                label { display: block; margin-bottom: 8px; color: #666; font-weight: 600; }
+                input {
+                    width: 100%;
+                    padding: 12px;
+                    border: 2px solid #e9ecef;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    font-size: 14px;
+                }
+                button {
+                    width: 100%;
+                    padding: 15px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 10px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    cursor: pointer;
+                }
+                button:hover { opacity: 0.9; }
+                .info {
+                    background: #dbeafe;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    color: #1e40af;
+                    font-size: 14px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>📅 Calendly API Key</h2>
+                <div class="info">
+                    💡 Calendly API key'inizi <a href="https://calendly.com/integrations/api_webhooks" target="_blank">buradan</a> alabilirsiniz.
+                </div>
+                <form action="/save-calendly" method="POST">
+                    <label>API Key:</label>
+                    <input type="text" name="api_key" placeholder="eyJraWQi..." required />
+
+                    <label>Email:</label>
+                    <input type="email" name="email" placeholder="email@example.com" required />
+
+                    <button type="submit">✅ Kaydet ve Devam Et</button>
+                </form>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+app.post('/save-calendly', (req, res) => {
+    // TODO: Veritabanına kaydet veya .env'yi güncelle
+    console.log('✅ Calendly credentials kaydedildi');
+    res.redirect('/setup?calendly=success');
+});
+
+app.get('/auth/zoom', (req, res) => {
+    res.send(`
+        <html>
+        <head>
+            <title>Zoom Bağlantısı</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    margin: 0;
+                }
+                .container {
+                    background: white;
+                    padding: 40px;
+                    border-radius: 15px;
+                    max-width: 500px;
+                    width: 100%;
+                }
+                h2 { color: #333; margin-bottom: 20px; }
+                label { display: block; margin-bottom: 8px; color: #666; font-weight: 600; }
+                input {
+                    width: 100%;
+                    padding: 12px;
+                    border: 2px solid #e9ecef;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    font-size: 14px;
+                }
+                button {
+                    width: 100%;
+                    padding: 15px;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    border: none;
+                    border-radius: 10px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    cursor: pointer;
+                }
+                button:hover { opacity: 0.9; }
+                .info {
+                    background: #dbeafe;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                    color: #1e40af;
+                    font-size: 14px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>🎥 Zoom Server-to-Server OAuth</h2>
+                <div class="info">
+                    💡 Zoom credentials'ı <a href="https://marketplace.zoom.us/" target="_blank">buradan</a> alabilirsiniz.
+                </div>
+                <form action="/save-zoom" method="POST">
+                    <label>Client ID:</label>
+                    <input type="text" name="client_id" placeholder="ShCQoSW1..." required />
+
+                    <label>Client Secret:</label>
+                    <input type="text" name="client_secret" placeholder="brzOMGU1..." required />
+
+                    <label>Account ID:</label>
+                    <input type="text" name="account_id" placeholder="llVjanmOR..." required />
+
+                    <label>User Email:</label>
+                    <input type="email" name="user_email" placeholder="email@example.com" required />
+
+                    <button type="submit">✅ Kaydet ve Devam Et</button>
+                </form>
+            </div>
+        </body>
+        </html>
+    `);
+});
+
+app.post('/save-zoom', (req, res) => {
+    // TODO: Veritabanına kaydet veya .env'yi güncelle
+    console.log('✅ Zoom credentials kaydedildi');
+    res.redirect('/setup?zoom=success');
 });
 
 cron.schedule('*/30 * * * *', async () => {
