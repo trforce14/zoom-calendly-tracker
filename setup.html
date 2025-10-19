@@ -232,15 +232,27 @@
     </div>
 
     <script>
-        let calendlyConnected = false;
-        let zoomConnected = false;
+        let calendlyConnected = localStorage.getItem('calendly_connected') === 'true';
+        let zoomConnected = localStorage.getItem('zoom_connected') === 'true';
+
+        // Sayfa yüklendiğinde kaydedilmiş durumları kontrol et
+        window.addEventListener('DOMContentLoaded', () => {
+            if (calendlyConnected) {
+                markCalendlyConnected();
+            }
+            if (zoomConnected) {
+                markZoomConnected();
+            }
+        });
 
         // URL'den gelen success parametrelerini kontrol et
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('calendly') === 'success') {
+            localStorage.setItem('calendly_connected', 'true');
             markCalendlyConnected();
         }
         if (urlParams.get('zoom') === 'success') {
+            localStorage.setItem('zoom_connected', 'true');
             markZoomConnected();
         }
 
@@ -292,6 +304,9 @@
         }
 
         function finishSetup() {
+            // Kurulum tamamlandı, localStorage'ı temizle
+            localStorage.removeItem('calendly_connected');
+            localStorage.removeItem('zoom_connected');
             window.location.href = '/dashboard?setup=complete';
         }
     </script>
