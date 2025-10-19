@@ -10,6 +10,38 @@ moment.locale('tr');
 const app = express();
 app.use(express.json());
 
+// Tüm ekip üyelerinin bilgileri
+const TEAM_MEMBERS = {
+    tunahan: {
+        name: 'Tunahan',
+        email: process.env.ZOOM_USER_EMAIL_TUNAHAN
+    },
+    talha: {
+        name: 'Talha',
+        email: process.env.ZOOM_USER_EMAIL_TALHA
+    },
+    yusuf: {
+        name: 'Yusuf',
+        email: process.env.ZOOM_USER_EMAIL_YUSUF
+    },
+    furkan: {
+        name: 'Furkan',
+        email: process.env.ZOOM_USER_EMAIL_FURKAN
+    },
+    batuhan: {
+        name: 'Batuhan',
+        email: process.env.ZOOM_USER_EMAIL_BATUHAN
+    },
+    emre: {
+        name: 'Emre',
+        email: process.env.ZOOM_USER_EMAIL_EMRE
+    },
+    tarik: {
+        name: 'Tarık',
+        email: process.env.ZOOM_USER_EMAIL_TARIK
+    }
+};
+
 let meetingsDatabase = [];
 let dailyStats = {
     date: moment().format('YYYY-MM-DD'),
@@ -122,7 +154,7 @@ class ZoomAutomation {
         }
     }
 
-    async checkPastMeetings(startDate = null, endDate = null) {
+    async checkPastMeetings(startDate = null, endDate = null, userEmail = null) {
         try {
             if (!this.token) {
                 const tokenResult = await this.getAccessToken();
@@ -132,9 +164,9 @@ class ZoomAutomation {
                 }
             }
 
-            // .env'den kullanıcı email'ini al
-            const userEmail = process.env.ZOOM_USER_EMAIL || 'tunahan@milyonercommerce.com';
-            console.log(`👤 Zoom User: ${userEmail}`);
+            // Eğer userEmail parametre olarak gönderilmemişse, default'u kullan
+            const email = userEmail || process.env.ZOOM_USER_EMAIL_TUNAHAN || 'tunahan@milyonercommerce.com';
+            console.log(`👤 Zoom User: ${email}`);
 
             // Tarih aralığını belirle (max 30 gün - Zoom Report API limiti)
             const startMoment = startDate
@@ -147,7 +179,7 @@ class ZoomAutomation {
             console.log(`📅 Tarih aralığı: ${startMoment.format('YYYY-MM-DD')} - ${endMoment.format('YYYY-MM-DD')}`);
 
             // Report API kullanarak geçmiş toplantıları çek
-            const response = await axios.get(`${this.baseURL}/report/users/${userEmail}/meetings`, {
+            const response = await axios.get(`${this.baseURL}/report/users/${email}/meetings`, {
                 headers: {
                     'Authorization': `Bearer ${this.token}`,
                 },
@@ -460,19 +492,24 @@ app.get('/setup', (req, res) => {
 });
 
 app.get('/dashboard', async (req, res) => {
-    // Tarih parametrelerini al
+    // Tarih ve kişi parametrelerini al
     const startDate = req.query.start;
     const endDate = req.query.end;
+    const selectedPerson = req.query.person || 'tunahan'; // Default: Tunahan
 
-    console.log(`\n🌐 Dashboard isteği geldi: start=${startDate}, end=${endDate}`);
+    console.log(`\n🌐 Dashboard isteği geldi: start=${startDate}, end=${endDate}, person=${selectedPerson}`);
+
+    // Seçilen kişinin bilgilerini al
+    const personInfo = TEAM_MEMBERS[selectedPerson] || TEAM_MEMBERS.tunahan;
+    const userEmail = personInfo.email;
 
     // Eğer tarih parametreleri varsa, özel analiz yap
-    let stats = dailyStats;
+    let stats = { ...dailyStats, personName: personInfo.name };
     if (startDate && endDate) {
         try {
             const analyzer = new AutomaticAnalyzer();
             const calendlyMeetings = await analyzer.calendly.getTodaysMeetings(startDate, endDate);
-            const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate);
+            const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate, userEmail);
 
             // Sadece bu tarih aralığındaki toplantıları analiz et (global database'e ekleme yapma)
             const analysis = await analyzer.analyzeAllMeetings(zoomMeetings, calendlyMeetings);
@@ -485,7 +522,8 @@ app.get('/dashboard', async (req, res) => {
                 notStarted: analysis.notStarted,
                 performanceScore: analysis.performanceScore,
                 lateDetails: analysis.lateDetails,
-                noParticipationDetails: analysis.noParticipationDetails
+                noParticipationDetails: analysis.noParticipationDetails,
+                personName: personInfo.name
             };
         } catch (error) {
             console.error('Dashboard analiz hatası:', error);
@@ -560,12 +598,17 @@ app.get('/dashboard', async (req, res) => {
                     font-weight: 600;
                     color: #666;
                 }
-                .date-input input {
+                .date-input input, .date-input select {
                     width: 100%;
                     padding: 10px;
                     border: 2px solid #e9ecef;
                     border-radius: 8px;
                     font-size: 14px;
+                    background: white;
+                    cursor: pointer;
+                }
+                .date-input select:hover {
+                    border-color: #667eea;
                 }
                 .filter-btn {
                     padding: 10px 30px;
@@ -607,10 +650,20 @@ app.get('/dashboard', async (req, res) => {
                 <h1>🚀 Zoom-Calendly Dashboard</h1>
 
                 <div class="card">
-                    <h2>📊 İstatistikler</h2>
+                    <h2>📊 İstatistikler - ${stats.personName || personInfo.name}</h2>
 
-                    <!-- Tarih Filtresi -->
+                    <!-- Kişi ve Tarih Filtresi -->
                     <div class="date-filter">
+                        <div class="date-input">
+                            <label>👤 Ekip Üyesi</label>
+                            <select id="personSelect">
+                                ${Object.keys(TEAM_MEMBERS).map(key => `
+                                    <option value="${key}" ${selectedPerson === key ? 'selected' : ''}>
+                                        ${TEAM_MEMBERS[key].name}
+                                    </option>
+                                `).join('')}
+                            </select>
+                        </div>
                         <div class="date-input">
                             <label>Başlangıç Tarihi</label>
                             <input type="date" id="startDate" value="${req.query.start || moment().subtract(30, 'days').format('YYYY-MM-DD')}">
@@ -701,7 +754,8 @@ app.get('/dashboard', async (req, res) => {
                 function applyFilter() {
                     const start = document.getElementById('startDate').value;
                     const end = document.getElementById('endDate').value;
-                    window.location.href = '/dashboard?start=' + start + '&end=' + end;
+                    const person = document.getElementById('personSelect').value;
+                    window.location.href = '/dashboard?start=' + start + '&end=' + end + '&person=' + person;
                 }
 
                 function setQuickFilter(days) {
@@ -713,6 +767,11 @@ app.get('/dashboard', async (req, res) => {
                     document.getElementById('endDate').value = end.toISOString().split('T')[0];
                     applyFilter();
                 }
+
+                // Kişi değiştiğinde otomatik filtrele
+                document.getElementById('personSelect').addEventListener('change', function() {
+                    applyFilter();
+                });
             </script>
         </body>
         </html>
