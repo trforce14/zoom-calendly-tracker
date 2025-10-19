@@ -1107,15 +1107,55 @@ const PORT = process.env.PORT || 3000;
 
 async function startApplication() {
     console.log('═══════════════════════════════════════════');
+    // Slack Test Endpoint
+    app.get('/test-slack', async (req, res) => {
+        try {
+            const personKey = req.query.person || 'tunahan';
+            const startDate = req.query.start || moment().subtract(7, 'days').format('YYYY-MM-DD');
+            const endDate = req.query.end || moment().format('YYYY-MM-DD');
+
+            console.log(`\n🧪 SLACK TEST - ${personKey.toUpperCase()}`);
+
+            const analyzer = new AutomaticAnalyzer(personKey);
+            const calendlyMeetings = await analyzer.calendly.getTodaysMeetings(startDate, endDate);
+            const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate);
+            const analysis = await analyzer.analyzeAllMeetings(zoomMeetings, calendlyMeetings);
+
+            console.log('\n📤 Slack\'e mesaj gönderiliyor...');
+            await analyzer.slack.sendDailyReport(analysis);
+
+            res.json({
+                success: true,
+                message: 'Slack test mesajı gönderildi!',
+                personName: analysis.personName,
+                stats: {
+                    total: analysis.total,
+                    onTime: analysis.onTime,
+                    late: analysis.late,
+                    noParticipation: analysis.noParticipation,
+                    notStarted: analysis.notStarted,
+                    performanceScore: analysis.performanceScore
+                }
+            });
+        } catch (error) {
+            console.error('❌ Slack test hatası:', error);
+            res.status(500).json({
+                success: false,
+                error: error.message
+            });
+        }
+    });
+
     console.log('🚀 ZOOM-CALENDLY TAKİP SİSTEMİ');
     console.log('═══════════════════════════════════════════');
     console.log('📅 Tarih:', moment().format('DD MMMM YYYY'));
     console.log('⏰ Saat:', moment().format('HH:mm:ss'));
     console.log('═══════════════════════════════════════════');
-    
+
     app.listen(PORT, () => {
         console.log(`✅ Sunucu başlatıldı: http://localhost:${PORT}`);
         console.log(`📊 Dashboard: http://localhost:${PORT}/dashboard`);
+        console.log(`🧪 Slack Test: http://localhost:${PORT}/test-slack?person=tunahan`);
         console.log('═══════════════════════════════════════════');
     });
     
