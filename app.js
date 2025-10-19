@@ -132,7 +132,8 @@ class CalendlyAutomation {
                     user: userUri,
                     min_start_time: startTime,
                     max_start_time: endTime,
-                    status: 'active'
+                    status: 'active',
+                    count: 100
                 }
             });
 
