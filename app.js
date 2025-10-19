@@ -15,6 +15,8 @@ const TEAM_MEMBERS = {
     tunahan: {
         name: 'Tunahan',
         email: process.env.ZOOM_USER_EMAIL_TUNAHAN,
+        calendlyApiKey: process.env.CALENDLY_API_KEY_TUNAHAN,
+        calendlyEmail: process.env.CALENDLY_USER_EMAIL_TUNAHAN,
         zoomClientId: process.env.ZOOM_CLIENT_ID_TUNAHAN,
         zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_TUNAHAN,
         zoomAccountId: process.env.ZOOM_ACCOUNT_ID_TUNAHAN
@@ -22,6 +24,8 @@ const TEAM_MEMBERS = {
     talha: {
         name: 'Talha',
         email: process.env.ZOOM_USER_EMAIL_TALHA,
+        calendlyApiKey: process.env.CALENDLY_API_KEY_TALHA,
+        calendlyEmail: process.env.CALENDLY_USER_EMAIL_TALHA,
         zoomClientId: process.env.ZOOM_CLIENT_ID_TALHA,
         zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_TALHA,
         zoomAccountId: process.env.ZOOM_ACCOUNT_ID_TALHA
@@ -29,6 +33,8 @@ const TEAM_MEMBERS = {
     yusuf: {
         name: 'Yusuf',
         email: process.env.ZOOM_USER_EMAIL_YUSUF,
+        calendlyApiKey: process.env.CALENDLY_API_KEY_YUSUF,
+        calendlyEmail: process.env.CALENDLY_USER_EMAIL_YUSUF,
         zoomClientId: process.env.ZOOM_CLIENT_ID_YUSUF,
         zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_YUSUF,
         zoomAccountId: process.env.ZOOM_ACCOUNT_ID_YUSUF
@@ -36,6 +42,8 @@ const TEAM_MEMBERS = {
     furkan: {
         name: 'Furkan',
         email: process.env.ZOOM_USER_EMAIL_FURKAN,
+        calendlyApiKey: process.env.CALENDLY_API_KEY_FURKAN,
+        calendlyEmail: process.env.CALENDLY_USER_EMAIL_FURKAN,
         zoomClientId: process.env.ZOOM_CLIENT_ID_FURKAN,
         zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_FURKAN,
         zoomAccountId: process.env.ZOOM_ACCOUNT_ID_FURKAN
@@ -43,6 +51,8 @@ const TEAM_MEMBERS = {
     batuhan: {
         name: 'Batuhan',
         email: process.env.ZOOM_USER_EMAIL_BATUHAN,
+        calendlyApiKey: process.env.CALENDLY_API_KEY_BATUHAN,
+        calendlyEmail: process.env.CALENDLY_USER_EMAIL_BATUHAN,
         zoomClientId: process.env.ZOOM_CLIENT_ID_BATUHAN,
         zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_BATUHAN,
         zoomAccountId: process.env.ZOOM_ACCOUNT_ID_BATUHAN
@@ -50,6 +60,8 @@ const TEAM_MEMBERS = {
     emre: {
         name: 'Emre',
         email: process.env.ZOOM_USER_EMAIL_EMRE,
+        calendlyApiKey: process.env.CALENDLY_API_KEY_EMRE,
+        calendlyEmail: process.env.CALENDLY_USER_EMAIL_EMRE,
         zoomClientId: process.env.ZOOM_CLIENT_ID_EMRE,
         zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_EMRE,
         zoomAccountId: process.env.ZOOM_ACCOUNT_ID_EMRE
@@ -57,6 +69,8 @@ const TEAM_MEMBERS = {
     tarik: {
         name: 'Tarık',
         email: process.env.ZOOM_USER_EMAIL_TARIK,
+        calendlyApiKey: process.env.CALENDLY_API_KEY_TARIK,
+        calendlyEmail: process.env.CALENDLY_USER_EMAIL_TARIK,
         zoomClientId: process.env.ZOOM_CLIENT_ID_TARIK,
         zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_TARIK,
         zoomAccountId: process.env.ZOOM_ACCOUNT_ID_TARIK
@@ -73,9 +87,20 @@ let dailyStats = {
 };
 
 class CalendlyAutomation {
-    constructor() {
-        this.apiKey = process.env.CALENDLY_API_KEY;
+    constructor(personKey = null) {
         this.baseURL = 'https://api.calendly.com';
+        this.personKey = personKey;
+
+        // Eğer person key verilmişse, o kişinin API key'ini kullan
+        if (personKey && TEAM_MEMBERS[personKey]) {
+            const member = TEAM_MEMBERS[personKey];
+            this.apiKey = member.calendlyApiKey;
+            this.userEmail = member.calendlyEmail;
+        } else {
+            // Fallback: Tunahan'ın API key'i (eski sistem için uyumluluk)
+            this.apiKey = process.env.CALENDLY_API_KEY_TUNAHAN;
+            this.userEmail = process.env.CALENDLY_USER_EMAIL_TUNAHAN;
+        }
     }
 
     async getTodaysMeetings(startDate = null, endDate = null) {
@@ -323,7 +348,7 @@ ${moment().format('DD MMMM YYYY, dddd')}
 
 class AutomaticAnalyzer {
     constructor(personKey = null) {
-        this.calendly = new CalendlyAutomation();
+        this.calendly = new CalendlyAutomation(personKey);
         this.zoom = new ZoomAutomation(personKey);
         this.slack = new SlackNotifier();
         this.personKey = personKey;
