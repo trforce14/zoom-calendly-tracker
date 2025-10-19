@@ -58,17 +58,23 @@ class CalendlyAutomation {
                 }
             });
 
-            const meetings = response.data.collection.map(event => ({
-                id: event.uri.split('/').pop(),
-                name: event.name,
-                scheduledTime: moment(event.start_time).format('DD/MM HH:mm'),
-                scheduledDateTime: event.start_time,
-                inviteeName: event.name, // İsim bilgisi
-                status: 'scheduled'
-            }));
+            // İptal edilenleri filtrele
+            const totalEvents = response.data.collection.length;
+            const meetings = response.data.collection
+                .filter(event => event.status !== 'canceled') // İptal edilenleri çıkar
+                .map(event => ({
+                    id: event.uri.split('/').pop(),
+                    name: event.name,
+                    scheduledTime: moment(event.start_time).format('DD/MM HH:mm'),
+                    scheduledDateTime: event.start_time,
+                    inviteeName: event.name,
+                    status: 'scheduled',
+                    calendlyStatus: event.status // Calendly'deki gerçek statusu da kaydet
+                }));
 
+            const canceledCount = totalEvents - meetings.length;
             const daysDiff = moment(endTime).diff(moment(startTime), 'days');
-            console.log(`📅 ${meetings.length} Calendly randevusu bulundu (${daysDiff} gün)`);
+            console.log(`📅 ${meetings.length} Calendly randevusu bulundu (${daysDiff} gün)${canceledCount > 0 ? ` | ${canceledCount} iptal edilmiş randevu filtrelendi` : ''}`);
             return meetings;
 
         } catch (error) {
