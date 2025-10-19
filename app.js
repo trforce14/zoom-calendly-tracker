@@ -37,8 +37,8 @@ class CalendlyAutomation {
 
             const userUri = userResponse.data.resource.uri;
 
-            // Son 7 günü al
-            const weekAgo = moment().subtract(7, 'days').startOf('day').toISOString();
+            // Son 30 günü al (Zoom Report API limiti nedeniyle)
+            const thirtyDaysAgo = moment().subtract(30, 'days').startOf('day').toISOString();
             const today = moment().endOf('day').toISOString();
 
             const response = await axios.get(`${this.baseURL}/scheduled_events`, {
@@ -48,7 +48,7 @@ class CalendlyAutomation {
                 },
                 params: {
                     user: userUri,
-                    min_start_time: weekAgo,
+                    min_start_time: thirtyDaysAgo,
                     max_start_time: today,
                     status: 'active'
                 }
@@ -59,10 +59,11 @@ class CalendlyAutomation {
                 name: event.name,
                 scheduledTime: moment(event.start_time).format('DD/MM HH:mm'),
                 scheduledDateTime: event.start_time,
+                inviteeName: event.name, // İsim bilgisi
                 status: 'scheduled'
             }));
 
-            console.log(`📅 ${meetings.length} Calendly randevusu bulundu (son 7 gün)`);
+            console.log(`📅 ${meetings.length} Calendly randevusu bulundu (son 30 gün)`);
             return meetings;
 
         } catch (error) {
@@ -124,29 +125,26 @@ class ZoomAutomation {
             const userEmail = process.env.ZOOM_USER_EMAIL || 'tunahan@milyonercommerce.com';
             console.log(`👤 Zoom User: ${userEmail}`);
 
-            // Tüm scheduled meetings'leri al
-            const response = await axios.get(`${this.baseURL}/users/${userEmail}/meetings`, {
+            // Son 30 günün tarih aralığını hazırla (Zoom Report API limiti)
+            const thirtyDaysAgo = moment().subtract(30, 'days').startOf('day');
+            const now = moment();
+
+            console.log(`📅 Tarih aralığı: ${thirtyDaysAgo.format('YYYY-MM-DD')} - ${now.format('YYYY-MM-DD')}`);
+
+            // Report API kullanarak geçmiş toplantıları çek
+            const response = await axios.get(`${this.baseURL}/report/users/${userEmail}/meetings`, {
                 headers: {
                     'Authorization': `Bearer ${this.token}`,
                 },
                 params: {
-                    type: 'scheduled',
-                    page_size: 300
+                    page_size: 300,
+                    from: thirtyDaysAgo.format('YYYY-MM-DD'),
+                    to: now.format('YYYY-MM-DD')
                 }
             });
 
-            // Son 7 günün toplantılarını filtrele
-            const weekAgo = moment().subtract(7, 'days').startOf('day');
-            const now = moment();
-
-            const pastMeetings = (response.data.meetings || []).filter(meeting => {
-                const meetingDate = moment(meeting.start_time);
-                const isInLastWeek = meetingDate.isAfter(weekAgo);
-                const isPast = meetingDate.isBefore(now);
-                return isInLastWeek && isPast;
-            });
-
-            console.log(`🎥 ${pastMeetings.length} Zoom toplantısı bulundu (son 7 gün)`);
+            const pastMeetings = response.data.meetings || [];
+            console.log(`🎥 ${pastMeetings.length} Zoom toplantısı bulundu (son 30 gün)`);
 
             // Her toplantının detaylarını al (başladı mı kontrolü için)
             const detailedMeetings = [];
@@ -271,7 +269,14 @@ class AutomaticAnalyzer {
             performanceScore: 0
         };
 
-        meetingsDatabase.forEach(meeting => {
+        console.log('\n🔍 EŞLEŞME ANALİZİ BAŞLIYOR...');
+        console.log(`📊 Toplam Calendly randevu: ${meetingsDatabase.length}`);
+        console.log(`📊 Toplam Zoom toplantı: ${zoomMeetings.length}`);
+        console.log('─'.repeat(80));
+
+        meetingsDatabase.forEach((meeting, index) => {
+            console.log(`\n[${index + 1}/${meetingsDatabase.length}] ${meeting.name} - ${moment(meeting.scheduledDateTime).format('YYYY-MM-DD HH:mm')}`);
+
             const zoomMatch = zoomMeetings.find(z => {
                 const timeDiff = Math.abs(
                     moment(z.start_time).diff(moment(meeting.scheduledDateTime), 'minutes')
@@ -281,20 +286,24 @@ class AutomaticAnalyzer {
 
             if (zoomMatch) {
                 const delay = moment(zoomMatch.start_time).diff(
-                    moment(meeting.scheduledDateTime), 
+                    moment(meeting.scheduledDateTime),
                     'minutes'
                 );
-                
+
+                console.log(`  ✅ EŞLEŞME! Zoom: "${zoomMatch.topic}" | Gecikme: ${delay} dk`);
+
                 meeting.actualStartTime = moment(zoomMatch.start_time).format('HH:mm');
                 meeting.delay = delay;
-                
+
                 if (delay <= 5) {
                     meeting.status = 'on-time';
                     analysis.onTime++;
+                    console.log(`     ✅ Zamanında`);
                 } else {
                     meeting.status = 'late';
                     analysis.late++;
-                    
+                    console.log(`     ⚠️ GEÇ (${delay} dakika)`);
+
                     if (delay > 15) {
                         analysis.criticalAlerts.push({
                             meeting: meeting.name,
@@ -307,20 +316,32 @@ class AutomaticAnalyzer {
                 if (moment().isAfter(moment(meeting.scheduledDateTime).add(10, 'minutes'))) {
                     meeting.status = 'not-started';
                     analysis.notStarted++;
-                    
+                    console.log(`  ❌ Başlatılmadı`);
+
                     analysis.criticalAlerts.push({
                         meeting: meeting.name,
                         message: `❌ ${meeting.name} toplantısı başlatılmadı!`
                     });
+                } else {
+                    console.log(`  ⏳ Henüz başlamamış`);
                 }
             }
             
             analysis.details.push(meeting);
         });
 
-        analysis.performanceScore = analysis.total > 0 
+        analysis.performanceScore = analysis.total > 0
             ? Math.round((analysis.onTime / analysis.total) * 100)
             : 100;
+
+        console.log('\n' + '═'.repeat(80));
+        console.log('📊 ANALİZ SONUÇLARI:');
+        console.log(`   Toplam: ${analysis.total}`);
+        console.log(`   ✅ Zamanında: ${analysis.onTime}`);
+        console.log(`   ⚠️ Geç: ${analysis.late}`);
+        console.log(`   ❌ Başlatılmadı: ${analysis.notStarted}`);
+        console.log(`   📈 Performans: ${analysis.performanceScore}%`);
+        console.log('═'.repeat(80) + '\n');
 
         return analysis;
     }
@@ -418,9 +439,9 @@ app.get('/dashboard', (req, res) => {
                 <h1>🚀 Zoom-Calendly Dashboard</h1>
                 
                 <div class="card">
-                    <h2>📊 Son 7 Gün İstatistikleri</h2>
+                    <h2>📊 Son 1 Yıl İstatistikleri</h2>
                     <p style="text-align: center; color: #666; margin-bottom: 20px;">
-                        ${moment().subtract(7, 'days').format('DD MMM')} - ${moment().format('DD MMM YYYY')}
+                        ${moment().subtract(1, 'year').format('DD MMM YYYY')} - ${moment().format('DD MMM YYYY')}
                     </p>
                     <div class="stats">
                         <div class="stat-card">
