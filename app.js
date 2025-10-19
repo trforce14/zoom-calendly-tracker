@@ -14,31 +14,52 @@ app.use(express.json());
 const TEAM_MEMBERS = {
     tunahan: {
         name: 'Tunahan',
-        email: process.env.ZOOM_USER_EMAIL_TUNAHAN
+        email: process.env.ZOOM_USER_EMAIL_TUNAHAN,
+        zoomClientId: process.env.ZOOM_CLIENT_ID_TUNAHAN,
+        zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_TUNAHAN,
+        zoomAccountId: process.env.ZOOM_ACCOUNT_ID_TUNAHAN
     },
     talha: {
         name: 'Talha',
-        email: process.env.ZOOM_USER_EMAIL_TALHA
+        email: process.env.ZOOM_USER_EMAIL_TALHA,
+        zoomClientId: process.env.ZOOM_CLIENT_ID_TALHA,
+        zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_TALHA,
+        zoomAccountId: process.env.ZOOM_ACCOUNT_ID_TALHA
     },
     yusuf: {
         name: 'Yusuf',
-        email: process.env.ZOOM_USER_EMAIL_YUSUF
+        email: process.env.ZOOM_USER_EMAIL_YUSUF,
+        zoomClientId: process.env.ZOOM_CLIENT_ID_YUSUF,
+        zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_YUSUF,
+        zoomAccountId: process.env.ZOOM_ACCOUNT_ID_YUSUF
     },
     furkan: {
         name: 'Furkan',
-        email: process.env.ZOOM_USER_EMAIL_FURKAN
+        email: process.env.ZOOM_USER_EMAIL_FURKAN,
+        zoomClientId: process.env.ZOOM_CLIENT_ID_FURKAN,
+        zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_FURKAN,
+        zoomAccountId: process.env.ZOOM_ACCOUNT_ID_FURKAN
     },
     batuhan: {
         name: 'Batuhan',
-        email: process.env.ZOOM_USER_EMAIL_BATUHAN
+        email: process.env.ZOOM_USER_EMAIL_BATUHAN,
+        zoomClientId: process.env.ZOOM_CLIENT_ID_BATUHAN,
+        zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_BATUHAN,
+        zoomAccountId: process.env.ZOOM_ACCOUNT_ID_BATUHAN
     },
     emre: {
         name: 'Emre',
-        email: process.env.ZOOM_USER_EMAIL_EMRE
+        email: process.env.ZOOM_USER_EMAIL_EMRE,
+        zoomClientId: process.env.ZOOM_CLIENT_ID_EMRE,
+        zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_EMRE,
+        zoomAccountId: process.env.ZOOM_ACCOUNT_ID_EMRE
     },
     tarik: {
         name: 'Tarık',
-        email: process.env.ZOOM_USER_EMAIL_TARIK
+        email: process.env.ZOOM_USER_EMAIL_TARIK,
+        zoomClientId: process.env.ZOOM_CLIENT_ID_TARIK,
+        zoomClientSecret: process.env.ZOOM_CLIENT_SECRET_TARIK,
+        zoomAccountId: process.env.ZOOM_ACCOUNT_ID_TARIK
     }
 };
 
@@ -120,11 +141,25 @@ class CalendlyAutomation {
 }
 
 class ZoomAutomation {
-    constructor() {
+    constructor(personKey = null) {
         this.baseURL = 'https://api.zoom.us/v2';
-        this.clientId = process.env.ZOOM_CLIENT_ID;
-        this.clientSecret = process.env.ZOOM_CLIENT_SECRET;
-        this.accountId = process.env.ZOOM_ACCOUNT_ID;
+        this.personKey = personKey;
+
+        // Eğer person key verilmişse, o kişinin credentials'larını kullan
+        if (personKey && TEAM_MEMBERS[personKey]) {
+            const member = TEAM_MEMBERS[personKey];
+            this.clientId = member.zoomClientId;
+            this.clientSecret = member.zoomClientSecret;
+            this.accountId = member.zoomAccountId;
+            this.userEmail = member.email;
+        } else {
+            // Fallback: Tunahan'ın credentials'ları (eski sistem için uyumluluk)
+            this.clientId = process.env.ZOOM_CLIENT_ID_TUNAHAN;
+            this.clientSecret = process.env.ZOOM_CLIENT_SECRET_TUNAHAN;
+            this.accountId = process.env.ZOOM_ACCOUNT_ID_TUNAHAN;
+            this.userEmail = process.env.ZOOM_USER_EMAIL_TUNAHAN;
+        }
+
         this.token = null;
     }
 
@@ -142,10 +177,10 @@ class ZoomAutomation {
             });
 
             this.token = response.data.access_token;
-            console.log('✅ Zoom access token alındı');
+            console.log(`✅ Zoom access token alındı (${this.personKey || 'default'})`);
             return this.token;
         } catch (error) {
-            console.error('❌ Zoom token hatası:', error.message);
+            console.error(`❌ Zoom token hatası (${this.personKey || 'default'}):`, error.message);
             if (error.response) {
                 console.error('   Status:', error.response.status);
                 console.error('   Data:', JSON.stringify(error.response.data, null, 2));
@@ -164,8 +199,8 @@ class ZoomAutomation {
                 }
             }
 
-            // Eğer userEmail parametre olarak gönderilmemişse, default'u kullan
-            const email = userEmail || process.env.ZOOM_USER_EMAIL_TUNAHAN || 'tunahan@milyonercommerce.com';
+            // Eğer userEmail parametre olarak gönderilmemişse, constructor'daki email'i kullan
+            const email = userEmail || this.userEmail;
             console.log(`👤 Zoom User: ${email}`);
 
             // Tarih aralığını belirle (max 30 gün - Zoom Report API limiti)
@@ -287,10 +322,11 @@ ${moment().format('DD MMMM YYYY, dddd')}
 }
 
 class AutomaticAnalyzer {
-    constructor() {
+    constructor(personKey = null) {
         this.calendly = new CalendlyAutomation();
-        this.zoom = new ZoomAutomation();
+        this.zoom = new ZoomAutomation(personKey);
         this.slack = new SlackNotifier();
+        this.personKey = personKey;
     }
 
     async performFullAnalysis() {
@@ -507,9 +543,10 @@ app.get('/dashboard', async (req, res) => {
     let stats = { ...dailyStats, personName: personInfo.name };
     if (startDate && endDate) {
         try {
-            const analyzer = new AutomaticAnalyzer();
+            // Seçilen kişiye özel analyzer oluştur
+            const analyzer = new AutomaticAnalyzer(selectedPerson);
             const calendlyMeetings = await analyzer.calendly.getTodaysMeetings(startDate, endDate);
-            const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate, userEmail);
+            const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate);
 
             // Sadece bu tarih aralığındaki toplantıları analiz et (global database'e ekleme yapma)
             const analysis = await analyzer.analyzeAllMeetings(zoomMeetings, calendlyMeetings);
