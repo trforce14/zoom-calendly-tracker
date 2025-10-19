@@ -553,9 +553,9 @@ app.get('/setup', (req, res) => {
 });
 
 app.get('/dashboard', async (req, res) => {
-    // Tarih ve kişi parametrelerini al
-    const startDate = req.query.start;
-    const endDate = req.query.end;
+    // Tarih ve kişi parametrelerini al - tarih yoksa default son 30 gün
+    const startDate = req.query.start || moment().subtract(30, 'days').format('YYYY-MM-DD');
+    const endDate = req.query.end || moment().format('YYYY-MM-DD');
     const selectedPerson = req.query.person || 'tunahan'; // Default: Tunahan
 
     console.log(`\n🌐 Dashboard isteği geldi: start=${startDate}, end=${endDate}, person=${selectedPerson}`);
@@ -564,32 +564,30 @@ app.get('/dashboard', async (req, res) => {
     const personInfo = TEAM_MEMBERS[selectedPerson] || TEAM_MEMBERS.tunahan;
     const userEmail = personInfo.email;
 
-    // Eğer tarih parametreleri varsa, özel analiz yap
+    // Her zaman analiz yap
     let stats = { ...dailyStats, personName: personInfo.name };
-    if (startDate && endDate) {
-        try {
-            // Seçilen kişiye özel analyzer oluştur
-            const analyzer = new AutomaticAnalyzer(selectedPerson);
-            const calendlyMeetings = await analyzer.calendly.getTodaysMeetings(startDate, endDate);
-            const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate);
+    try {
+        // Seçilen kişiye özel analyzer oluştur
+        const analyzer = new AutomaticAnalyzer(selectedPerson);
+        const calendlyMeetings = await analyzer.calendly.getTodaysMeetings(startDate, endDate);
+        const zoomMeetings = await analyzer.zoom.checkPastMeetings(startDate, endDate);
 
-            // Sadece bu tarih aralığındaki toplantıları analiz et (global database'e ekleme yapma)
-            const analysis = await analyzer.analyzeAllMeetings(zoomMeetings, calendlyMeetings);
+        // Sadece bu tarih aralığındaki toplantıları analiz et (global database'e ekleme yapma)
+        const analysis = await analyzer.analyzeAllMeetings(zoomMeetings, calendlyMeetings);
 
-            stats = {
-                total: analysis.total,
-                onTime: analysis.onTime,
-                late: analysis.late,
-                noParticipation: analysis.noParticipation,
-                notStarted: analysis.notStarted,
-                performanceScore: analysis.performanceScore,
-                lateDetails: analysis.lateDetails,
-                noParticipationDetails: analysis.noParticipationDetails,
-                personName: personInfo.name
-            };
-        } catch (error) {
-            console.error('Dashboard analiz hatası:', error);
-        }
+        stats = {
+            total: analysis.total,
+            onTime: analysis.onTime,
+            late: analysis.late,
+            noParticipation: analysis.noParticipation,
+            notStarted: analysis.notStarted,
+            performanceScore: analysis.performanceScore,
+            lateDetails: analysis.lateDetails,
+            noParticipationDetails: analysis.noParticipationDetails,
+            personName: personInfo.name
+        };
+    } catch (error) {
+        console.error('Dashboard analiz hatası:', error);
     }
 
     // Cache'i devre dışı bırak
@@ -728,11 +726,11 @@ app.get('/dashboard', async (req, res) => {
                         </div>
                         <div class="date-input">
                             <label>Başlangıç Tarihi</label>
-                            <input type="date" id="startDate" value="${req.query.start || moment().subtract(30, 'days').format('YYYY-MM-DD')}">
+                            <input type="date" id="startDate" value="${startDate}">
                         </div>
                         <div class="date-input">
                             <label>Bitiş Tarihi</label>
-                            <input type="date" id="endDate" value="${req.query.end || moment().format('YYYY-MM-DD')}">
+                            <input type="date" id="endDate" value="${endDate}">
                         </div>
                         <button class="filter-btn" onclick="applyFilter()">Filtrele</button>
                     </div>
@@ -745,7 +743,7 @@ app.get('/dashboard', async (req, res) => {
                     </div>
 
                     <p style="text-align: center; color: #666; margin-bottom: 20px;">
-                        ${req.query.start ? moment(req.query.start).format('DD MMM YYYY') : moment().subtract(30, 'days').format('DD MMM YYYY')} - ${req.query.end ? moment(req.query.end).format('DD MMM YYYY') : moment().format('DD MMM YYYY')}
+                        ${moment(startDate).format('DD MMM YYYY')} - ${moment(endDate).format('DD MMM YYYY')}
                     </p>
                     <div class="stats">
                         <div class="stat-card">
