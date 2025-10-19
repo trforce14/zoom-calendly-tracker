@@ -614,6 +614,10 @@ app.get('/dashboard', async (req, res) => {
                             <div>Geç Başlayan</div>
                         </div>
                         <div class="stat-card">
+                            <div class="stat-number" style="color: #9C27B0;">${stats.noParticipation || 0}</div>
+                            <div>Katılım Yok</div>
+                        </div>
+                        <div class="stat-card">
                             <div class="stat-number" style="color: #f44336;">${stats.notStarted}</div>
                             <div>Başlatılmayan</div>
                         </div>
@@ -622,6 +626,36 @@ app.get('/dashboard', async (req, res) => {
                     <div style="text-align: center; font-size: 48px; margin: 20px; color: ${stats.performanceScore >= 80 ? '#4CAF50' : stats.performanceScore >= 60 ? '#FF9800' : '#f44336'};">
                         Performans: ${stats.performanceScore || 0}%
                     </div>
+
+                    ${stats.lateDetails && stats.lateDetails.length > 0 ? `
+                    <div style="background: #FFF3E0; border-left: 4px solid #FF9800; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                        <h3 style="margin: 0 0 10px 0; color: #E65100;">⚠️ Geç Başlayan Toplantılar (${stats.lateDetails.length})</h3>
+                        <ul style="margin: 0; padding-left: 20px; color: #666;">
+                            ${stats.lateDetails.map(meeting => `
+                                <li style="margin: 5px 0;">
+                                    <strong>${meeting.name}</strong> - ${meeting.scheduledTime}
+                                    <span style="color: #FF9800; font-weight: bold;"> → ${meeting.delay} dakika geç</span>
+                                    <span style="color: #666;"> (${meeting.participants} katılımcı)</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+
+                    ${stats.noParticipationDetails && stats.noParticipationDetails.length > 0 ? `
+                    <div style="background: #F3E5F5; border-left: 4px solid #9C27B0; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                        <h3 style="margin: 0 0 10px 0; color: #6A1B9A;">👻 Katılım Olmayan Toplantılar (${stats.noParticipationDetails.length})</h3>
+                        <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">Zoom açıldı ama müşteri katılmadı</p>
+                        <ul style="margin: 0; padding-left: 20px; color: #666;">
+                            ${stats.noParticipationDetails.map(meeting => `
+                                <li style="margin: 5px 0;">
+                                    <strong>${meeting.name}</strong> - ${meeting.scheduledTime}
+                                    <span style="color: #9C27B0;"> → Sadece ${meeting.participants} kişi</span>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
 
                     <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-top: 20px;">
                         <p style="margin: 0; text-align: center; color: #666;">
